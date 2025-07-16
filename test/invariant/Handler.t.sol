@@ -12,7 +12,7 @@ contract Handler is Test {
     ERC20Mock poolToken;
     address liquidityProvider = makeAddr("liquidityProvider");
     address user = makeAddr("user");
-    
+
     // ghost variables to track deltas
     int256 startingX; //Pool token / ERC20 - X
     int256 startingY; //weth

@@ -13,7 +13,7 @@ contract InvariantTest is StdInvariant, Test {
     TSwapPool tSwapPool;
     ERC20Mock poolToken;
     ERC20Mock weth;
-    
+
     int256 constant INITIAL_AMOUNT_X = 100e18; //Pool token / ERC20 - X
     int256 constant INITIAL_AMOUNT_Y = 50e18; // WETH - Y
     Handler handler;
@@ -43,11 +43,11 @@ contract InvariantTest is StdInvariant, Test {
         targetContract(address(handler));
     }
 
-    function invariant_constantProductFormulaStaysTheSameX() external view { 
+    function invariant_constantProductFormulaStaysTheSameX() external view {
         assertEq(handler.expectedDeltaX(), handler.actualDeltaX(), "Delta X mismatch");
     }
 
-    function invariant_constantProductFormulaStaysTheSameY() external view { 
+    function invariant_constantProductFormulaStaysTheSameY() external view {
         assertEq(handler.expectedDeltaY(), handler.actualDeltaY(), "Delta Y mismatch");
     }
 }

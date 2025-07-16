@@ -33,7 +33,7 @@ contract TSwapPool is ERC20 {
     //////////////////////////////////////////////////////////////*/
     IERC20 private immutable i_wethToken;
     IERC20 private immutable i_poolToken;
-    uint256 private constant MINIMUM_WETH_LIQUIDITY = 1_000_000_000;
+    uint256 private constant MINIMUM_WETH_LIQUIDITY = 1_000_000_000; //1e9
     uint256 private swap_count = 0;
     uint256 private constant SWAP_COUNT_MAX = 10;
 
@@ -89,10 +89,13 @@ contract TSwapPool is ERC20 {
     /// @param maximumPoolTokensToDeposit The maximum amount of pool tokens the user is willing to deposit, again it's
     /// derived from the amount of WETH the user is going to deposit
     /// @param deadline The deadline for the transaction to be completed by
+    //@audit-med forgot to add modifier "revertIfDeadlinePassed"
+    //@audit-high sandwich attack (FrontRun - Txn - BackRun), griefing attack
     function deposit(
         uint256 wethToDeposit,
         uint256 minimumLiquidityTokensToMint,
         uint256 maximumPoolTokensToDeposit,
+        //@audit-info  deadline parameter is a dead parameter, it is not used in the function
         uint64 deadline
     )
         external
@@ -104,6 +107,7 @@ contract TSwapPool is ERC20 {
         }
         if (totalLiquidityTokenSupply() > 0) {
             uint256 wethReserves = i_wethToken.balanceOf(address(this));
+            //@audit-info unused variable
             uint256 poolTokenReserves = i_poolToken.balanceOf(address(this));
             // Our invariant says weth, poolTokens, and liquidity tokens must always have the same ratio after the
             // initial deposit
@@ -130,6 +134,8 @@ contract TSwapPool is ERC20 {
             }
 
             // We do the same thing for liquidity tokens. Similar math.
+            //@audit-q is this the right way to calculate liquidity tokens? Seems like it is ignoring the pool tokens?
+            //@audit-high This is asymmetric calculation of LP tokens.
             liquidityTokensToMint = (wethToDeposit * totalLiquidityTokenSupply()) / wethReserves;
             if (liquidityTokensToMint < minimumLiquidityTokensToMint) {
                 revert TSwapPool__MinLiquidityTokensToMintTooLow(minimumLiquidityTokensToMint, liquidityTokensToMint);
@@ -167,6 +173,7 @@ contract TSwapPool is ERC20 {
     /// @param minWethToWithdraw The minimum amount of WETH the user wants to withdraw
     /// @param minPoolTokensToWithdraw The minimum amount of pool tokens the user wants to withdraw
     /// @param deadline The deadline for the transaction to be completed by
+    //@audit-high griefing attack by donating tokens to the pool
     function withdraw(
         uint256 liquidityTokensToBurn,
         uint256 minWethToWithdraw,
@@ -247,8 +254,9 @@ contract TSwapPool is ERC20 {
     {
         return ((inputReserves * outputAmount) * 10000) / ((outputReserves - outputAmount) * 997);
     }
-    //@audit-info no natspec given for this function
 
+    //@audit-info no natspec given for this function
+    //@audit-high This function always returns 0 as the return value is not set
     function swapExactInput(
         IERC20 inputToken,
         uint256 inputAmount,
@@ -309,6 +317,7 @@ contract TSwapPool is ERC20 {
      * @param poolTokenAmount amount of pool tokens to sell
      * @return wethAmount amount of WETH received by caller
      */
+    //@audit-high instead of swapExactOutput this should rather use swapExactInput
     function sellPoolTokens(uint256 poolTokenAmount) external returns (uint256 wethAmount) {
         return swapExactOutput(i_poolToken, i_wethToken, poolTokenAmount, uint64(block.timestamp));
     }
@@ -330,6 +339,7 @@ contract TSwapPool is ERC20 {
         swap_count++;
         if (swap_count >= SWAP_COUNT_MAX) {
             swap_count = 0;
+            //@audit-med what if protocol tries to give the user more than it has?
             outputToken.safeTransfer(msg.sender, 1_000_000_000_000_000_000);
         }
         emit Swap(msg.sender, inputToken, inputAmount, outputToken, outputAmount);
