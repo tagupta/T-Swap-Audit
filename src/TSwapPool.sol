@@ -103,11 +103,12 @@ contract TSwapPool is ERC20 {
         returns (uint256 liquidityTokensToMint)
     {
         if (wethToDeposit < MINIMUM_WETH_LIQUIDITY) {
+            //@audit-info MINIMUM_WETH_LIQUIDITY is a constant, so not required to be emitted
             revert TSwapPool__WethDepositAmountTooLow(MINIMUM_WETH_LIQUIDITY, wethToDeposit);
         }
         if (totalLiquidityTokenSupply() > 0) {
             uint256 wethReserves = i_wethToken.balanceOf(address(this));
-            //@audit-info unused variable
+            //@audit-gas unused variable
             uint256 poolTokenReserves = i_poolToken.balanceOf(address(this));
             // Our invariant says weth, poolTokens, and liquidity tokens must always have the same ratio after the
             // initial deposit
@@ -145,6 +146,7 @@ contract TSwapPool is ERC20 {
             // This will be the "initial" funding of the protocol. We are starting from blank here!
             // We just have them send the tokens in, and we mint liquidity tokens based on the weth
             _addLiquidityMintAndTransfer(wethToDeposit, maximumPoolTokensToDeposit, wethToDeposit);
+            //@audit-info it would be better if this was before the _addLiquidityMintAndTransfer call to follow CEI
             liquidityTokensToMint = wethToDeposit;
         }
     }
@@ -161,6 +163,10 @@ contract TSwapPool is ERC20 {
         private
     {
         _mint(msg.sender, liquidityTokensToMint);
+        //@audit-low this is backwards, it should be wethToDeposit, poolTokensToDeposit
+        //IMPACT: LOW - protocol is giving the wrong return/information
+        //LIKELIHOOD: HIGH  - happens every time
+        //SEVERITY: LOW
         emit LiquidityAdded(msg.sender, poolTokensToDeposit, wethToDeposit);
 
         // Interactions
@@ -235,6 +241,7 @@ contract TSwapPool is ERC20 {
         // totalPoolTokensOfPool) + (wethToDeposit * poolTokensToDeposit) = k
         // (totalWethOfPool * totalPoolTokensOfPool) + (wethToDeposit * totalPoolTokensOfPool) = k - (totalWethOfPool *
         // poolTokensToDeposit) - (wethToDeposit * poolTokensToDeposit)
+        //@audit-info magic numbers 997 and 1000 should not be used here, they should be defined as constants
         uint256 inputAmountMinusFee = inputAmount * 997;
         uint256 numerator = inputAmountMinusFee * outputReserves;
         uint256 denominator = (inputReserves * 1000) + inputAmountMinusFee;
@@ -252,6 +259,7 @@ contract TSwapPool is ERC20 {
         revertIfZero(outputReserves)
         returns (uint256 inputAmount)
     {
+        //@audit-high users are charged way too much, 90.3% of fee is charged when it should be 0.3%
         return ((inputReserves * outputAmount) * 10000) / ((outputReserves - outputAmount) * 997);
     }
 
@@ -264,6 +272,7 @@ contract TSwapPool is ERC20 {
         uint256 minOutputAmount,
         uint64 deadline
     )
+    //@audit-info this function should be marked as `external` instead of `public`
         public
         revertIfZero(inputAmount)
         revertIfDeadlinePassed(deadline)
@@ -297,6 +306,7 @@ contract TSwapPool is ERC20 {
         IERC20 inputToken,
         IERC20 outputToken,
         uint256 outputAmount,
+        //uint256 maxInputAmount,
         uint64 deadline
     )
         public
@@ -308,6 +318,9 @@ contract TSwapPool is ERC20 {
         uint256 outputReserves = outputToken.balanceOf(address(this));
 
         inputAmount = getInputAmountBasedOnOutput(outputAmount, inputReserves, outputReserves);
+        //@audit-high this function does not check for maxInputAmount against inputAmount, so it can lead to a loss of funds
+        //no condition to check slippage tolerance
+
 
         _swap(inputToken, inputAmount, outputToken, outputAmount);
     }
@@ -365,6 +378,7 @@ contract TSwapPool is ERC20 {
     }
 
     /// @notice a more verbose way of getting the total supply of liquidity tokens
+    //@audit-info this function should be marked as `external` instead of `public`
     function totalLiquidityTokenSupply() public view returns (uint256) {
         return totalSupply();
     }
