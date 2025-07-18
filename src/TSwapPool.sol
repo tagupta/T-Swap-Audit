@@ -163,7 +163,7 @@ contract TSwapPool is ERC20 {
         private
     {
         _mint(msg.sender, liquidityTokensToMint);
-        //@audit-low this is backwards, it should be wethToDeposit, poolTokensToDeposit
+        //@report-written this is backwards, it should be wethToDeposit, poolTokensToDeposit
         //IMPACT: LOW - protocol is giving the wrong return/information
         //LIKELIHOOD: HIGH  - happens every time
         //SEVERITY: LOW
@@ -259,12 +259,12 @@ contract TSwapPool is ERC20 {
         revertIfZero(outputReserves)
         returns (uint256 inputAmount)
     {
-        //@audit-high users are charged way too much, 90.3% of fee is charged when it should be 0.3%
+        //@report-written users are charged way too much, 90.3% of fee is charged when it should be 0.3%
         return ((inputReserves * outputAmount) * 10000) / ((outputReserves - outputAmount) * 997);
     }
 
     //@report-written no natspec given for this function
-    //@audit-high This function always returns 0 as the return value is not set
+    //@report-written This function always returns 0 as the return value is not set
     function swapExactInput(
         IERC20 inputToken,
         uint256 inputAmount,
@@ -318,7 +318,7 @@ contract TSwapPool is ERC20 {
         uint256 outputReserves = outputToken.balanceOf(address(this));
 
         inputAmount = getInputAmountBasedOnOutput(outputAmount, inputReserves, outputReserves);
-        //@audit-high this function does not check for maxInputAmount against inputAmount, so it can lead to a loss of funds
+        //@report-written this function does not check for maxInputAmount against inputAmount, so it can lead to a loss of funds
         //no condition to check slippage tolerance
 
 

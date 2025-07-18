@@ -269,4 +269,91 @@ contract TSwapPoolTest is Test {
 
         // assertEq(wethReceived, expectedWethToReceive, "User should receive the expected WETH");
     }
-}
+
+    //@audit-poc
+    function test_UserIsChargedMoreThanIntended() external{
+        uint256 initialWethAmount = 100e18;
+        uint256 initialPoolTokenAmount = 100e18;
+        //initial liquidity added to the pool
+        vm.startPrank(liquidityProvider);
+        weth.approve(address(pool), type(uint256).max);
+        poolToken.approve(address(pool), type(uint256).max);
+        pool.deposit(initialWethAmount, 0, initialPoolTokenAmount, uint64(block.timestamp));
+        vm.stopPrank();
+
+        //user wants to sell WETH tokens 
+        uint256 wethToBuy = 1e18;
+        //poolTokens expected to receive
+        //since the pool ratio is 1:1, the user is expected to spend ~ 1 pool token
+        uint256 expectedPoolTokensToAdd = pool.getInputAmountBasedOnOutput(wethToBuy, poolToken.balanceOf(address(pool)), weth.balanceOf(address(pool)));
+        console.log("Expected PoolTokens to add:", expectedPoolTokensToAdd);
+        uint256 inputReserve = poolToken.balanceOf(address(pool));
+        uint256 outputReserve = weth.balanceOf(address(pool));
+        uint256 outputAmount = wethToBuy;
+ 
+        uint256 actualPoolTokensToAdd = (1000 * (inputReserve * outputAmount)) / (997 * (outputReserve - outputAmount));
+        console.log("Actual PoolTokens to add:", actualPoolTokensToAdd);
+
+        assertLt(actualPoolTokensToAdd, expectedPoolTokensToAdd, "User is charged more than intended");
+
+        //initiate the swap
+        address someUser = makeAddr("someUser");
+        poolToken.mint(someUser, 11 ether); //minting more than expected to ensure the user has enough balance
+        vm.startPrank(someUser);
+        poolToken.approve(address(pool), type(uint256).max);
+        pool.swapExactOutput(poolToken, weth, wethToBuy, uint64(block.timestamp));
+        vm.stopPrank();
+
+        uint256 poolTokensAfterSwap = poolToken.balanceOf(someUser);
+        //after swap the user is left with less than 1 pool token (i.e spent nearly 10 times of the intended ~10 pool tokens), when they should have spent nearly 1 pool token for the purchase of 1 WETH
+        assertLt(poolTokensAfterSwap, 1e18, "User should have spent less than 1 pool token");
+
+    }
+    
+    //@audit-poc
+    function test_SwapExactInput_Always_Returns_Zero() external {
+        vm.startPrank(liquidityProvider);
+        weth.approve(address(pool), 100e18);
+        poolToken.approve(address(pool), 100e18);
+        pool.deposit(100e18, 100e18, 100e18, uint64(block.timestamp));
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        poolToken.approve(address(pool), 10e18);
+        // After we swap, there will be ~110 tokenA, and ~91 WETH
+        // 100 * 100 = 10,000
+        // 110 * ~91 = 10,000
+        uint256 expected = 9e18;
+
+        uint256 actualAmount = pool.swapExactInput(poolToken, 10e18, weth, expected, uint64(block.timestamp));
+        vm.stopPrank();
+
+        assert(weth.balanceOf(user) >= expected);
+        assertEq(actualAmount, 0, "SwapExactInput should always return 0");
+    }
+
+    //@audit-poc 
+    function test_No_Slippage_Protection_In_SwapExactOutput() external {
+        vm.startPrank(liquidityProvider);
+        weth.approve(address(pool), 100e18);
+        poolToken.approve(address(pool), 100e18);
+        pool.deposit(100e18, 100e18, 100e18, uint64(block.timestamp));
+        vm.stopPrank();
+
+        uint256 wethToBuy = 1e18;
+        //user doesn't want to spend more than 2e18 pool tokens for 1e18 WETH 
+        //since the pool ratio is 1:1, the user is expected to spend ~ 1 pool token
+        //initiate the swap
+        address someUser = makeAddr("someUser");
+        poolToken.mint(someUser, 11 ether); //minting more than expected to ensure the user has enough balance
+        vm.startPrank(someUser);
+        poolToken.approve(address(pool), type(uint256).max);
+        pool.swapExactOutput(poolToken, weth, wethToBuy, uint64(block.timestamp));
+        vm.stopPrank();
+
+        uint256 poolTokensAfterSwap = poolToken.balanceOf(someUser);
+        //after swap the user is left with less than 1 pool token due to price slippage, when they should have spent nearly 1 pool token for the purchase of 1 WETH
+        assertLt(poolTokensAfterSwap, 1e18, "User should have spent less than 1 pool token");
+    }
+
+} 
