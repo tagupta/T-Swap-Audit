@@ -89,7 +89,6 @@ contract TSwapPool is ERC20 {
     /// @param maximumPoolTokensToDeposit The maximum amount of pool tokens the user is willing to deposit, again it's
     /// derived from the amount of WETH the user is going to deposit
     /// @param deadline The deadline for the transaction to be completed by
-    //@audit-med forgot to add modifier "revertIfDeadlinePassed"
     //@audit-high sandwich attack (FrontRun - Txn - BackRun), griefing attack
     function deposit(
         uint256 wethToDeposit,
@@ -272,7 +271,7 @@ contract TSwapPool is ERC20 {
         uint256 minOutputAmount,
         uint64 deadline
     )
-    //@report-written this function should be marked as `external` instead of `public`
+        //@report-written this function should be marked as `external` instead of `public`
         public
         revertIfZero(inputAmount)
         revertIfDeadlinePassed(deadline)
@@ -318,9 +317,9 @@ contract TSwapPool is ERC20 {
         uint256 outputReserves = outputToken.balanceOf(address(this));
 
         inputAmount = getInputAmountBasedOnOutput(outputAmount, inputReserves, outputReserves);
-        //@report-written this function does not check for maxInputAmount against inputAmount, so it can lead to a loss of funds
+        //@report-written this function does not check for maxInputAmount against inputAmount, so it can lead to a loss
+        // of funds
         //no condition to check slippage tolerance
-
 
         _swap(inputToken, inputAmount, outputToken, outputAmount);
     }
@@ -330,7 +329,7 @@ contract TSwapPool is ERC20 {
      * @param poolTokenAmount amount of pool tokens to sell
      * @return wethAmount amount of WETH received by caller
      */
-    //@audit-high instead of swapExactOutput this should rather use swapExactInput
+    //@report-written instead of swapExactOutput this should rather use swapExactInput
     function sellPoolTokens(uint256 poolTokenAmount) external returns (uint256 wethAmount) {
         return swapExactOutput(i_poolToken, i_wethToken, poolTokenAmount, uint64(block.timestamp));
     }
@@ -348,11 +347,10 @@ contract TSwapPool is ERC20 {
             revert TSwapPool__InvalidToken();
         }
 
-        //@audit-high breaks protocol invariant of constant product formula
+        //@report-written breaks protocol invariant of constant product formula
         swap_count++;
         if (swap_count >= SWAP_COUNT_MAX) {
             swap_count = 0;
-            //@audit-med what if protocol tries to give the user more than it has?
             outputToken.safeTransfer(msg.sender, 1_000_000_000_000_000_000);
         }
         emit Swap(msg.sender, inputToken, inputAmount, outputToken, outputAmount);

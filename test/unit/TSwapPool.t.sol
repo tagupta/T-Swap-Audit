@@ -5,7 +5,8 @@ import { Test, console } from "forge-std/Test.sol";
 import { TSwapPool } from "../../src/PoolFactory.sol";
 import { ERC20Mock } from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import { IERC20 } from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IERC20Errors} from '@openzeppelin/contracts/interfaces/draft-IERC6093.sol';
+import { IERC20Errors } from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {TransferFeeToken} from '../mocks/TransferFeeToken.sol';
 
 contract TSwapPoolTest is Test {
     TSwapPool pool;
@@ -200,7 +201,6 @@ contract TSwapPoolTest is Test {
         uint256 poolTokenToDeposit = pool.getPoolTokensToDepositBasedOnWeth(wethToDeposit);
         console.log("PoolToken to deposit:", poolTokenToDeposit);
 
-
         if (poolTokenToDeposit > poolToken.balanceOf(user)) {
             poolToken.mint(user, poolTokenToDeposit - poolToken.balanceOf(user) + 1); //just to be sure
         }
@@ -243,7 +243,8 @@ contract TSwapPoolTest is Test {
         assertEq(expectedWethToWithdraw, wethToDeposit);
     }
     //@audit-poc
-    function test_SellTokens_Reverts() external { 
+
+    function test_SellPoolTokens_Reverts() external {
         uint256 initialWethAmount = 100e18;
         uint256 initialPoolTokenAmount = 100e18;
         //initial liquidity added to the pool
@@ -256,22 +257,23 @@ contract TSwapPoolTest is Test {
         //user wants to sell pool tokens
         uint256 poolTokenToSell = 10e18;
         //weth expected to receive
-        uint256 expectedWethToReceive = pool.getOutputAmountBasedOnInput(poolTokenToSell, 
-            poolToken.balanceOf(address(pool)), weth.balanceOf(address(pool)));
-        console.log("Expected WETH to receive:", expectedWethToReceive);
+        uint256 expectedWethToReceive = pool.getOutputAmountBasedOnInput(
+            poolTokenToSell, poolToken.balanceOf(address(pool)), weth.balanceOf(address(pool))
+        );
+        console.log("Expected WETH to receive:", expectedWethToReceive); //9.06 WETH
 
         vm.startPrank(user);
         poolToken.approve(address(pool), type(uint256).max);
+
+        //expecting user to have 11.14 WETH to convert these for 10 pool tokens
         vm.expectPartialRevert(IERC20Errors.ERC20InsufficientBalance.selector);
-        // uint256 wethReceived = pool.sellPoolTokens(poolTokenToSell);
+
         pool.sellPoolTokens(poolTokenToSell);
         vm.stopPrank();
-
-        // assertEq(wethReceived, expectedWethToReceive, "User should receive the expected WETH");
     }
 
     //@audit-poc
-    function test_UserIsChargedMoreThanIntended() external{
+    function test_UserIsChargedMoreThanIntended() external {
         uint256 initialWethAmount = 100e18;
         uint256 initialPoolTokenAmount = 100e18;
         //initial liquidity added to the pool
@@ -281,16 +283,18 @@ contract TSwapPoolTest is Test {
         pool.deposit(initialWethAmount, 0, initialPoolTokenAmount, uint64(block.timestamp));
         vm.stopPrank();
 
-        //user wants to sell WETH tokens 
+        //user wants to sell WETH tokens
         uint256 wethToBuy = 1e18;
         //poolTokens expected to receive
         //since the pool ratio is 1:1, the user is expected to spend ~ 1 pool token
-        uint256 expectedPoolTokensToAdd = pool.getInputAmountBasedOnOutput(wethToBuy, poolToken.balanceOf(address(pool)), weth.balanceOf(address(pool)));
+        uint256 expectedPoolTokensToAdd = pool.getInputAmountBasedOnOutput(
+            wethToBuy, poolToken.balanceOf(address(pool)), weth.balanceOf(address(pool))
+        );
         console.log("Expected PoolTokens to add:", expectedPoolTokensToAdd);
         uint256 inputReserve = poolToken.balanceOf(address(pool));
         uint256 outputReserve = weth.balanceOf(address(pool));
         uint256 outputAmount = wethToBuy;
- 
+
         uint256 actualPoolTokensToAdd = (1000 * (inputReserve * outputAmount)) / (997 * (outputReserve - outputAmount));
         console.log("Actual PoolTokens to add:", actualPoolTokensToAdd);
 
@@ -305,11 +309,11 @@ contract TSwapPoolTest is Test {
         vm.stopPrank();
 
         uint256 poolTokensAfterSwap = poolToken.balanceOf(someUser);
-        //after swap the user is left with less than 1 pool token (i.e spent nearly 10 times of the intended ~10 pool tokens), when they should have spent nearly 1 pool token for the purchase of 1 WETH
+        //after swap the user is left with less than 1 pool token (i.e spent nearly 10 times of the intended ~10 pool
+        // tokens), when they should have spent nearly 1 pool token for the purchase of 1 WETH
         assertLt(poolTokensAfterSwap, 1e18, "User should have spent less than 1 pool token");
-
     }
-    
+
     //@audit-poc
     function test_SwapExactInput_Always_Returns_Zero() external {
         vm.startPrank(liquidityProvider);
@@ -332,7 +336,7 @@ contract TSwapPoolTest is Test {
         assertEq(actualAmount, 0, "SwapExactInput should always return 0");
     }
 
-    //@audit-poc 
+    //@audit-poc
     function test_No_Slippage_Protection_In_SwapExactOutput() external {
         vm.startPrank(liquidityProvider);
         weth.approve(address(pool), 100e18);
@@ -341,7 +345,7 @@ contract TSwapPoolTest is Test {
         vm.stopPrank();
 
         uint256 wethToBuy = 1e18;
-        //user doesn't want to spend more than 2e18 pool tokens for 1e18 WETH 
+        //user doesn't want to spend more than 2e18 pool tokens for 1e18 WETH
         //since the pool ratio is 1:1, the user is expected to spend ~ 1 pool token
         //initiate the swap
         address someUser = makeAddr("someUser");
@@ -352,8 +356,80 @@ contract TSwapPoolTest is Test {
         vm.stopPrank();
 
         uint256 poolTokensAfterSwap = poolToken.balanceOf(someUser);
-        //after swap the user is left with less than 1 pool token due to price slippage, when they should have spent nearly 1 pool token for the purchase of 1 WETH
+        //after swap the user is left with less than 1 pool token due to price slippage, when they should have spent
+        // nearly 1 pool token for the purchase of 1 WETH
         assertLt(poolTokensAfterSwap, 1e18, "User should have spent less than 1 pool token");
     }
 
-} 
+    //@audit-poc
+    function test_invariant_broke_x_product_y_not_constant() external {
+        vm.startPrank(liquidityProvider);
+        weth.approve(address(pool), 100e18);
+        poolToken.approve(address(pool), 100e18);
+        pool.deposit(100e18, 100e18, 100e18, uint64(block.timestamp));
+        vm.stopPrank();
+
+        uint256 outputWeth = 1e17;
+        poolToken.mint(user, 100e18);
+
+        vm.startPrank(user);
+        poolToken.approve(address(pool), type(uint256).max);
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+
+        int256 startingY = int256(weth.balanceOf(address(pool)));
+        int256 expectedDeltaY = int256(outputWeth) * int256(-1);
+
+        pool.swapExactOutput(poolToken, weth, outputWeth, uint64(block.timestamp));
+
+        vm.stopPrank();
+
+        int256 endingY = int256(weth.balanceOf(address(pool)));
+
+        int256 actualDeltaY = endingY - startingY;
+        assertEq(expectedDeltaY, actualDeltaY);
+    }
+
+    //@audit-poc
+    function test_invariant_broken_for_Weird_ERC20() external {
+        TransferFeeToken newPoolToken = new TransferFeeToken(1e15, "Weird ERC20", "wERC20");
+
+        weth = new ERC20Mock();
+        pool = new TSwapPool(address(newPoolToken), address(weth), "LTokenA", "LA");
+
+        weth.mint(liquidityProvider, 200e18);
+        newPoolToken.mint(liquidityProvider, 200e18);
+
+        weth.mint(user, 10e18);
+        newPoolToken.mint(user, 10e18);
+
+        vm.startPrank(liquidityProvider);
+        weth.approve(address(pool), 100e18);
+        newPoolToken.approve(address(pool), 100e18);
+        pool.deposit(100e18, 100e18, 100e18, uint64(block.timestamp));
+        vm.stopPrank();
+        
+        uint256 wethAmount = 5e18;
+        int256 startingX = int256(newPoolToken.balanceOf(address(pool)));
+        uint256 poolTokenAmount = pool.getPoolTokensToDepositBasedOnWeth(wethAmount);
+        int256 expectedDeltaX = int256(poolTokenAmount);
+
+        vm.startPrank(user);
+        weth.approve(address(pool), wethAmount);
+        newPoolToken.approve(address(pool), poolTokenAmount);
+        pool.deposit(wethAmount, 0, poolTokenAmount, uint64(block.timestamp));
+        vm.stopPrank();
+
+        int256 endingX = int256(poolToken.balanceOf(address(pool)));
+        int256 actualDeltaX = endingX - startingX;
+
+        assertEq(expectedDeltaX, actualDeltaX, "Delta X mismatch");
+    }
+}
