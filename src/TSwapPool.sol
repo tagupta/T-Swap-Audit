@@ -89,7 +89,7 @@ contract TSwapPool is ERC20 {
     /// @param maximumPoolTokensToDeposit The maximum amount of pool tokens the user is willing to deposit, again it's
     /// derived from the amount of WETH the user is going to deposit
     /// @param deadline The deadline for the transaction to be completed by
-    //@audit-high sandwich attack (FrontRun - Txn - BackRun), griefing attack
+    //@report-written sandwich attack (FrontRun - Txn - BackRun), griefing attack
     function deposit(
         uint256 wethToDeposit,
         uint256 minimumLiquidityTokensToMint,
@@ -134,8 +134,6 @@ contract TSwapPool is ERC20 {
             }
 
             // We do the same thing for liquidity tokens. Similar math.
-            //@audit-q is this the right way to calculate liquidity tokens? Seems like it is ignoring the pool tokens?
-            //@audit-high This is asymmetric calculation of LP tokens.
             liquidityTokensToMint = (wethToDeposit * totalLiquidityTokenSupply()) / wethReserves;
             if (liquidityTokensToMint < minimumLiquidityTokensToMint) {
                 revert TSwapPool__MinLiquidityTokensToMintTooLow(minimumLiquidityTokensToMint, liquidityTokensToMint);
